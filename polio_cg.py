@@ -1,12 +1,27 @@
-# -*- coding: latin-1 -*-
-import sys
+﻿import sys
 import time
 from itertools import combinations, permutations
 from collections import Counter, defaultdict
 import copy
-from colorama import Fore, Style, init
-init(autoreset=True)
-sys.setrecursionlimit(10**9)
+
+# Place all polyominoes to form predefined 2D shape
+
+ids = input()
+print(ids, file=sys.stderr, flush=True)
+counter_polio = Counter(ids)
+ids = [x for x in ids]
+h, w = [int(i) for i in input().split()]
+g = []
+for i in range(h):
+    line = input()  # single line of board - place your polyominoes only on 'O' symbols
+    print(line, file=sys.stderr, flush=True)
+    g.append(line)
+    if '.' in line:
+        counter_polio['.'] = 1
+    
+# Write an action using print
+# To debug: print("Debug messages...", file=sys.stderr, flush=True)
+
 
 class LinkNode:
     def __init__(self):
@@ -104,6 +119,48 @@ class ManageLink:
         colHead.R.L = colHead
         colHead.L.R = colHead
 
+    def coverp(self, col):
+        col.R.L = col.L
+        col.L.R = col.R
+        for i in self.iter_down(col):
+            for j in self.iter_right(i):
+                j.D.U = j.U
+                j.U.D = j.D
+                j.C.size -= 1
+
+    def uncoverp(self, col):
+        for i in self.iter_up(col):
+            for j in self.iter_left(i):
+                j.C.size += 1
+                j.D.U = j
+                j.U.D = j
+        col.R.L = col
+        col.L.R = col
+
+    def iter_right(self, node):
+        c = node.R
+        while c != node:
+            yield c
+            c = c.R
+
+    def iter_left(self, node):
+        c = node.L
+        while c != node:
+            yield c
+            c = c.L
+
+    def iter_down(self, node):
+        c = node.D
+        while c != node:
+            yield c
+            c = c.D
+
+    def iter_up(self, node):
+        c = node.U
+        while c != node:
+            yield c
+            c = c.U
+
     def visualizeColumns(self):
         print("---- Visualize columns ----")
         c = self.root.R
@@ -191,6 +248,7 @@ def sudokuDLX(board):
         r,c,val = row_map[rid]
         solved[r][c] = val
     return solved
+
 
 polyominos_with_rot = {
     # Carré 2x2
@@ -363,13 +421,13 @@ def rotationsK2(shape):
 
     current = shape
     for _ in range(4):  # 0°, 90°, 180°, 270°
-        rots.append(normalize(current))
+        rots.append((current))
         current = rotate90(current)
 
     mirrored = mirror(shape)
     current = mirrored
     for _ in range(4):
-        rots.append(normalize(current))
+        rots.append((current))
         current = rotate90(current)
 
     # on retire les doublons (certaines formes symétriques ont < 8 variantes)
@@ -382,7 +440,6 @@ def rotationsK2(shape):
             unique_rots.append(r)
 
     return unique_rots
-
 
 def rotationsK(shape):
     """
@@ -402,27 +459,24 @@ def rotationsK(shape):
     return [list(s) for s in shapes]
 
 
-def polyominoDLX(N):
-    global polyominos_with_rot
+def polyominoDLX(N, M, CPolio, g):
+    global polyominos_with_rot, ids
+   
+    #print(polyominos_with_rot, file=sys.stderr, flush=True)
 
-    #polyominos_with_rot = defaultdict()
-    
-    #for name, coords in polyominos.items():
-    #    rot = rotationsK(coords)
-    #    i = 0
-    #    for r in rot:
-    #        polyominos_with_rot[name+str(i)] = r
-    #        i+=1
+    row_id = 0
+    num_cells = N * M
+    num_pieces = len(polyominos_with_rot)
+    total_cols = num_cells + len(ids)
 
-    print(polyominos_with_rot)
-    print(len(polyominos_with_rot.keys()))
+    row_map = {}
 
-    N_cols = (N)*(N)#+len(polyominos_with_rot.keys())  # contraintes
+
+    N_cols = total_cols  # contraintes
     dlx = ManageLink(N_cols)
     row_map = {}  # row_id -> (r,c,val)
 
-    baseN = N*N
-
+   
     object = {0:[(0,0),(1,0),(2,0)]}#,
               #1:[(0,0)]}
 
@@ -443,47 +497,109 @@ def polyominoDLX(N):
         "Z": [(0,0), (0,-1), (1,0), (1,1)],
     }
 
-    poss = ['D', 'I']
-
+    
     row_id = 0
+    idx = 0
+    id_piece = []
     for name, shape in polyominos_with_rot.items():
         # trouver les positions possibles
-        if name[0] not in poss:continue
-
+        if name[0] not in ids:
+            idx +=1
+            continue
+        id_piece.append(name)
         max_r = N - max(dr for dr, _ in shape )
-        max_c = N - max(dc for _, dc in shape )
+        max_c = M - max(dc for _, dc in shape )
         min_r = -min(dr for dr, _ in shape )
         min_c = -min(dc for _, dc in shape )
+        
 
-        #print(max_r, max_c, min_r, min_c)
+        #print(max_r, max_c, min_r, min_c, file=sys.stderr, flush=True)
       
         for r in range(min_r, max_r):
             for c in range(min_c, max_c):
-                nodes = []#dlx.addNode(row_id, r*N+c)
-              
+                #dlx.addNode(row_id, r*N+c)
+                valid = True
+                
                 for dr, dc in shape:
                     nr, nc = r + dr, c + dc
-                       
-                    col_idx = nr*N + nc
+                    if g[nr][nc] == '.':
+                        valid = False
+                        break
+                
+                if valid:
+                    nodes = []
+                    for dr, dc in shape:
+                        nr, nc = r + dr, c + dc
+                        col_idx = nr*M + nc
+                        nodes.append(dlx.addNode(row_id, col_idx))
+
+                    col_idx = N*M + ids.index(name[0])
                     nodes.append(dlx.addNode(row_id, col_idx))
-                   
+
+                    dlx.linkRowNodes(nodes)
+                    row_map[row_id] = (r, c, name)
+                    row_id += 1
+
+                                        
+        idx +=1
+
+                
+    
+    for r in range(0, N):
+        for c in range(0, M):
+            if g[r][c] == '.':
+                nodes = []
+                nr, nc = r , c
+                col_idx = nr*M + nc
+                nodes.append(dlx.addNode(row_id, col_idx))
+
                 dlx.linkRowNodes(nodes)
-                row_map[row_id] = (r, c, name)
+                row_map[row_id] = (r, c, "")
                 row_id += 1
-                    
+    
+    """
+    for i in range(len(ids)):
+        nodes = []
+        #if 'ABCDEFGHIJKLMN'[i] in ids:
+        col_idx = N*M + i
+        nodes.append(dlx.addNode(row_id, col_idx))
+
+        dlx.linkRowNodes(nodes)
+        row_map[row_id] = (-1, -1, 'ABCDEFGHIJKLMN'[0])
+        row_id += 1
+    """
  
     solution = []
     sf = []
 
+    """
+    for forced_piece in id_piece:
+        forced_idx = list(polyominos_with_rot.keys()).index(forced_piece)
+        forced_col = dlx.colHeader[N*M + forced_idx]
+        dlx.coverp(forced_col)
+    """
+
     count = 0
     
     def search():
-        nonlocal count
+        nonlocal count, sf, solution
 
         if dlx.root.R == dlx.root:
+            """
+            piece = set()
+            valid = True
+            for rid in solution:
+                r, c, val = row_map[rid]
+                if g[r][c] == '.' :
+                    valid=False
+                    break
+                piece.add(val[0])
+            if valid and len(piece) == len(CPolio.keys()):
+                sf.append(solution[:])
+            """
             sf.append(solution[:])
             count +=1
-            
+            print('sol', file=sys.stderr, flush=True)
             return True  # toutes les colonnes couvertes
 
         # choisir la colonne avec le moins de 1
@@ -505,8 +621,8 @@ def polyominoDLX(N):
                 dlx.cover(j.C)
                 j = j.R
             if search():
-                if count >= 20:
-                    return True
+                #if count == 1:
+                return True
             # backtrack
             solution.pop()
             j = r.L
@@ -537,20 +653,31 @@ def polyominoDLX(N):
     ]
     RESET = "\033[0m"
 
+    print("nb sol=", len(sf), file=sys.stderr, flush=True)
+
     # reconstruction de la grille colorée
     fsolved = []
     for s in sf:
-        solved = [['.'] * N for _ in range(N)]
+        solved = [['.'] * M for _ in range(N)]
         indcol = 0  # on réinitialise pour chaque solution
 
         for rid in s:
             r, c, val = row_map[rid]
             col = colors[indcol % len(colors)][0]  # couleur cyclique
+            if val not in polyominos_with_rot.keys():continue
+            #if val[0] != 'L': continue
             for y, x in polyominos_with_rot[val]:
-                solved[r + y][c + x] = col + val+ RESET
+                solved[r + y][c + x] = val[0]
             indcol = (indcol + 1) % len(colors)  # prochaine couleur
 
+      
+        for r in range(0, N):
+            for c in range(0, M):
+                if g[r][c] == '.':
+                    solved[r][c] = '.'
+
         fsolved.append(solved)
+        break
 
     # affichage de toutes les grilles
     for grid in fsolved:
@@ -559,11 +686,12 @@ def polyominoDLX(N):
         print()
 
 
-N = 50
+N = h
+M = w
 
 start = time.perf_counter()
-polyominoDLX(N)
+polyominoDLX(N, M, counter_polio, g)
 end = time.perf_counter()
-print("time:", end-start)
+print("time:", end-start, N, M,file=sys.stderr, flush=True)
 
 
